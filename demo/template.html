@@ -1,0 +1,529 @@
+<title>Speckle Reduction Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: reading-room console. Image viewer dominates; a narrow control rail
+   on the right; readouts in mono like scanner annotations. Amber = caliper colour. */
+:root {
+  --bg: #eef1f2; --panel: #ffffff; --line: #d4dade; --fg: #142028; --muted: #5b6a74;
+  --accent: #946200; --accent-soft: #f4e3bd; --ok: #1f7a4d; --bad: #b3261e;
+  --canvas: #0b0e10;
+  --f-ui: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1114; --panel: #151b20; --line: #27313a; --fg: #dfe6ea; --muted: #8b99a3;
+  --accent: #e8b04a; --accent-soft: #3a2f17; --ok: #5fc58f; --bad: #f07a6f; --canvas: #000; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0d1114; --panel: #151b20; --line: #27313a; --fg: #dfe6ea; --muted: #8b99a3;
+  --accent: #e8b04a; --accent-soft: #3a2f17; --ok: #5fc58f; --bad: #f07a6f; --canvas: #000; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-ui); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 16px; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 0; text-wrap: balance }
+.sub { color: var(--muted); max-width: 70ch; margin: 4px 0 0 }
+.samples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
+.chip { font: 500 13px var(--f-ui); padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); cursor: pointer }
+.chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft) }
+.chip:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr) } }
+.viewer { background: var(--canvas); border-radius: 6px; overflow: hidden; position: relative; min-width: 0; display: flex; justify-content: center }
+canvas#view { display: block; max-width: 100%; touch-action: none; cursor: crosshair }
+.vbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin-top: 10px }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex-wrap: wrap }
+.seg button { font: 500 12.5px var(--f-ui); padding: 6px 10px; border: 0; background: var(--panel); color: var(--fg); cursor: pointer; border-right: 1px solid var(--line) }
+.seg button:last-child { border-right: 0 }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent) }
+.hint { color: var(--muted); font-size: 12.5px }
+.tag { position: absolute; top: 8px; font: 500 11px var(--f-mono); letter-spacing: .06em; text-transform: uppercase;
+  color: #e8b04a; background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 3px; pointer-events: none }
+.tag.l { left: 8px } .tag.r { right: 8px }
+.busy { position: absolute; bottom: 8px; right: 8px; font: 12px var(--f-mono); color: #e8b04a; background: rgba(0,0,0,.6); padding: 3px 8px; border-radius: 3px }
+aside { display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px }
+.panel h2 { font-size: 11.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px }
+select { width: 100%; font: 500 14px var(--f-ui); padding: 7px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg); color: var(--fg) }
+.about { color: var(--muted); font-size: 12.5px; margin: 8px 0 0 }
+.param { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 12px }
+.param label { font-size: 13px }
+.param output { font: 12.5px var(--f-mono); color: var(--accent); font-variant-numeric: tabular-nums }
+.param input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent) }
+table.ro { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums }
+table.ro th, table.ro td { text-align: right; padding: 4px 0 4px 8px; font: 12.5px var(--f-mono); border-bottom: 1px solid var(--line) }
+table.ro th:first-child, table.ro td:first-child { text-align: left; padding-left: 0; font-family: var(--f-ui); font-size: 13px }
+table.ro thead th { color: var(--muted); font: 600 11px var(--f-ui); letter-spacing: .06em; text-transform: uppercase }
+.up { color: var(--ok) } .down { color: var(--bad) }
+.drop { display: block; border: 1px dashed var(--line); border-radius: 6px; padding: 10px; text-align: center; color: var(--muted); font-size: 12.5px; cursor: pointer }
+.drop.over { border-color: var(--accent); color: var(--fg) }
+.roi-pick { display: flex; gap: 6px; margin-bottom: 8px }
+footer { color: var(--muted); font-size: 12px; margin-top: 18px; max-width: 90ch }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Speckle Reduction Lab</h1>
+      <p class="sub">Run eight despeckling filters on simulated and real breast ultrasound, compare them side by side, and measure the result in regions you draw. Everything runs in your browser.</p>
+    </div>
+    <div class="samples" id="samples" role="group" aria-label="Sample image"></div>
+  </header>
+
+  <div class="grid">
+    <div style="min-width:0">
+      <div class="viewer" id="viewer">
+        <canvas id="view" aria-label="Ultrasound image viewer"></canvas>
+        <span class="tag l" id="tagL">Input</span><span class="tag r" id="tagR">Filtered</span>
+        <span class="busy" id="busy" hidden>Filtering…</span>
+      </div>
+      <div class="vbar">
+        <div class="seg" role="group" aria-label="View mode" id="modes">
+          <button data-mode="split" aria-pressed="true">Split</button>
+          <button data-mode="input" aria-pressed="false">Input</button>
+          <button data-mode="output" aria-pressed="false">Filtered</button>
+          <button data-mode="noise" aria-pressed="false">Removed</button>
+          <button data-mode="map" aria-pressed="false">Structure map</button>
+          <button data-mode="ref" aria-pressed="false" id="refBtn">Ground truth</button>
+        </div>
+        <span class="hint" id="modeHint">Drag the divider to compare. Draw boxes to measure.</span>
+      </div>
+    </div>
+
+    <aside>
+      <div class="panel">
+        <h2>Filter</h2>
+        <select id="filter" aria-label="Filter"></select>
+        <p class="about" id="about"></p>
+        <div id="params"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Measurements</h2>
+        <div class="roi-pick seg" role="group" aria-label="Region to draw">
+          <button data-roi="0" aria-pressed="true">Draw region A</button>
+          <button data-roi="1" aria-pressed="false">Draw region B</button>
+        </div>
+        <table class="ro" id="ro">
+          <thead><tr><th>Metric</th><th>Input</th><th>Filtered</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="about" id="roHint">Region A in tissue gives SNR. Add region B inside a lesion for CNR and gCNR.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Your image</h2>
+        <label class="drop" id="drop" for="file">Drop a B-mode PNG or JPG here, or click to choose one.</label>
+        <input type="file" id="file" accept="image/*" hidden>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    Phantom images come from this project's physics simulator (5 MHz, 50 dB display range) and include the speckle-free ground truth.
+    Clinical images are from the BUSI dataset (Al-Dhabyani et al., Data in Brief, 2020). Parameters default to the values tuned in the project; iteration counts are capped for browser speed.
+  </footer>
+</div>
+
+<script id="worker-src" type="text/js-worker">
+const EPS = 1e-6;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+function boxMean(src, W, H, r) {
+  const tmp = new Float32Array(W * H), out = new Float32Array(W * H), n = 2 * r + 1;
+  const row = new Float64Array(W + 2 * r + 1);
+  for (let y = 0; y < H; y++) {
+    const o = y * W; row[0] = 0;
+    for (let i = 0; i < W + 2 * r; i++) row[i + 1] = row[i] + src[o + clamp(i - r, 0, W - 1)];
+    for (let x = 0; x < W; x++) tmp[o + x] = (row[x + n] - row[x]) / n;
+  }
+  const col = new Float64Array(H + 2 * r + 1);
+  for (let x = 0; x < W; x++) {
+    col[0] = 0;
+    for (let i = 0; i < H + 2 * r; i++) col[i + 1] = col[i] + tmp[clamp(i - r, 0, H - 1) * W + x];
+    for (let y = 0; y < H; y++) out[y * W + x] = (col[y + n] - col[y]) / n;
+  }
+  return out;
+}
+function localStats(u, W, H, size) {
+  const r = size >> 1, m = boxMean(u, W, H, r), sq = new Float32Array(u.length);
+  for (let i = 0; i < u.length; i++) sq[i] = u[i] * u[i];
+  const m2 = boxMean(sq, W, H, r), v = new Float32Array(u.length);
+  for (let i = 0; i < u.length; i++) v[i] = Math.max(m2[i] - m[i] * m[i], 0);
+  return [m, v];
+}
+function median(arr) { const a = Float32Array.from(arr).sort(); return a.length ? a[a.length >> 1] : 0; }
+function cu2(u, W, H, size) {
+  const [m, v] = localStats(u, W, H, size), vals = [];
+  for (let i = 0; i < u.length; i += 3) if (m[i] > 0.05) vals.push(v[i] / (m[i] * m[i]));
+  return median(vals);
+}
+function sigma2(u, W, H) {
+  const [m, v] = localStats(u, W, H, 7), vals = [];
+  for (let i = 0; i < u.length; i += 3) if (m[i] > 0.05) vals.push(v[i] / m[i]);
+  return median(vals);
+}
+function gauss(u, W, H, s) {
+  const r = Math.ceil(3 * s), k = [];
+  let sum = 0; for (let i = -r; i <= r; i++) { const g = Math.exp(-i * i / (2 * s * s)); k.push(g); sum += g; }
+  for (let i = 0; i < k.length; i++) k[i] /= sum;
+  const t = new Float32Array(u.length), o = new Float32Array(u.length);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let a = 0; for (let j = -r; j <= r; j++) a += k[j + r] * u[y * W + clamp(x + j, 0, W - 1)]; t[y * W + x] = a; }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let a = 0; for (let j = -r; j <= r; j++) a += k[j + r] * t[clamp(y + j, 0, H - 1) * W + x]; o[y * W + x] = a; }
+  return o;
+}
+function medianFilter(u, W, H, p) {
+  const r = p.size >> 1, out = new Float32Array(u.length), q = new Uint8Array(u.length);
+  for (let i = 0; i < u.length; i++) q[i] = clamp(Math.round(u[i] * 255), 0, 255);
+  const half = ((2 * r + 1) ** 2 >> 1) + 1;
+  for (let y = 0; y < H; y++) {
+    const h = new Int32Array(256);
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) h[q[clamp(y + dy, 0, H - 1) * W + clamp(dx, 0, W - 1)]]++;
+    for (let x = 0; x < W; x++) {
+      if (x > 0) for (let dy = -r; dy <= r; dy++) {
+        const yy = clamp(y + dy, 0, H - 1) * W;
+        h[q[yy + clamp(x - r - 1, 0, W - 1)]]--; h[q[yy + clamp(x + r, 0, W - 1)]]++;
+      }
+      let c = 0, b = 0; while (b < 256) { c += h[b]; if (c >= half) break; b++; }
+      out[y * W + x] = b / 255;
+    }
+  }
+  return out;
+}
+function leeKuan(u, W, H, p, kuan) {
+  const c = cu2(u, W, H, p.size), [m, v] = localStats(u, W, H, p.size), o = new Float32Array(u.length);
+  for (let i = 0; i < u.length; i++) {
+    const ci2 = v[i] / Math.max(m[i] * m[i], EPS);
+    let k = 1 - c / Math.max(ci2, EPS); if (kuan) k /= (1 + c);
+    o[i] = m[i] + clamp(k, 0, 1) * (u[i] - m[i]);
+  }
+  return o;
+}
+function frost(u, W, H, p) {
+  const c = cu2(u, W, H, p.size), [m, v] = localStats(u, W, H, p.size), r = p.size >> 1;
+  const num = new Float32Array(u.length), den = new Float32Array(u.length), a = new Float32Array(u.length);
+  for (let i = 0; i < u.length; i++) a[i] = p.damping * (v[i] / Math.max(m[i] * m[i], EPS)) / Math.max(c, EPS);
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const d = Math.hypot(dy, dx);
+    for (let y = 0; y < H; y++) { const yy = clamp(y + dy, 0, H - 1) * W;
+      for (let x = 0; x < W; x++) { const i = y * W + x, w = Math.exp(-a[i] * d); num[i] += w * u[yy + clamp(x + dx, 0, W - 1)]; den[i] += w; } }
+  }
+  for (let i = 0; i < u.length; i++) num[i] /= den[i];
+  return num;
+}
+function diffs(u, W, H, dn, ds, dw, de) {
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, c = u[i];
+    dn[i] = y > 0 ? u[i - W] - c : 0; ds[i] = y < H - 1 ? u[i + W] - c : 0;
+    dw[i] = x > 0 ? u[i - 1] - c : 0; de[i] = x < W - 1 ? u[i + 1] - c : 0;
+  }
+}
+function bufs(N) { return [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)]; }
+function peronaMalik(u, W, H, p) {
+  const a = Float32Array.from(u), N = u.length, [dn, ds, dw, de] = bufs(N);
+  const k2 = p.kappa * p.kappa, dt = 0.15;
+  for (let it = 0; it < p.n_iter; it++) {
+    diffs(a, W, H, dn, ds, dw, de);
+    for (let i = 0; i < N; i++) {
+      const n = dn[i], s = ds[i], w = dw[i], e = de[i];
+      a[i] += dt * (n / (1 + n * n / k2) + s / (1 + s * s / k2) + w / (1 + w * w / k2) + e / (1 + e * e / k2));
+    }
+  }
+  return a;
+}
+function srad(u, W, H, p) {
+  const I = Float32Array.from(u, v => Math.max(v, 1e-3)), N = u.length, dt = 0.2, c = new Float32Array(N);
+  const [dn, ds, dw, de] = bufs(N);
+  for (let it = 0; it < p.n_iter; it++) {
+    const q02 = it % 10 === 0 || !srad.q ? (srad.q = cu2(I, W, H, 7)) : srad.q;
+    diffs(I, W, H, dn, ds, dw, de);
+    for (let i = 0; i < N; i++) {
+      const Ii = Math.max(I[i], EPS), n = dn[i], s = ds[i], w = dw[i], e = de[i];
+      const g2 = (n * n + s * s + w * w + e * e) / (Ii * Ii), lap = (n + s + w + e) / Ii;
+      const q2 = (0.5 * g2 - lap * lap / 16) / ((1 + 0.25 * lap) ** 2);
+      c[i] = clamp(1 / (1 + (q2 - q02) / (q02 * (1 + q02) + EPS)), 0, 1);
+    }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x, cs = y < H - 1 ? c[i + W] : c[i], ce = x < W - 1 ? c[i + 1] : c[i];
+      I[i] += dt * (cs * ds[i] + c[i] * dn[i] + ce * de[i] + c[i] * dw[i]);
+    }
+  }
+  srad.q = 0;
+  return I;
+}
+function nlmCore(u, W, H, h2, patch, search) {
+  const r = search >> 1, pr = patch >> 1, N = u.length, PW = W + 2 * r, PH = H + 2 * r;
+  const P = new Float32Array(PW * PH);
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) P[y * PW + x] = u[clamp(y - r, 0, H - 1) * W + clamp(x - r, 0, W - 1)];
+  const inv = new Float32Array(N);
+  if (typeof h2 === "number") inv.fill(1 / h2); else for (let i = 0; i < N; i++) inv[i] = 1 / h2[i];
+  const num = new Float32Array(N), den = new Float32Array(N), wmax = new Float32Array(N), D = new Float32Array(N), S = new Float32Array(N);
+  const tmp = new Float32Array(N), Dm = new Float32Array(N), n = 2 * pr + 1, row = new Float32Array(Math.max(W, H) + 2 * pr + 1);
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (!dy && !dx) continue;
+    for (let y = 0; y < H; y++) { const o = (y + r + dy) * PW + r + dx, oi = y * W;
+      for (let x = 0; x < W; x++) { const s = P[o + x], e = u[oi + x] - s; S[oi + x] = s; D[oi + x] = e * e / (s > 0.02 ? s : 0.02); } }
+    // separable box mean of D (clamped borders)
+    for (let y = 0; y < H; y++) { const o = y * W; row[0] = 0;
+      for (let i = 0; i < W + 2 * pr; i++) row[i + 1] = row[i] + D[o + clamp(i - pr, 0, W - 1)];
+      for (let x = 0; x < W; x++) tmp[o + x] = row[x + n] - row[x]; }
+    for (let x = 0; x < W; x++) { row[0] = 0;
+      for (let i = 0; i < H + 2 * pr; i++) row[i + 1] = row[i] + tmp[clamp(i - pr, 0, H - 1) * W + x];
+      for (let y = 0; y < H; y++) Dm[y * W + x] = row[y + n] - row[y]; }
+    const nn = 1 / (n * n);
+    for (let i = 0; i < N; i++) { const w = Math.exp(-Dm[i] * nn * inv[i]); num[i] += w * S[i]; den[i] += w; if (w > wmax[i]) wmax[i] = w; }
+  }
+  const o = new Float32Array(N);
+  for (let i = 0; i < N; i++) { const wm = wmax[i] || 1; o[i] = (num[i] + wm * u[i]) / (den[i] + wm); }
+  return o;
+}
+function obnlm(u, W, H, p) { return nlmCore(u, W, H, 2 * p.beta * sigma2(u, W, H), p.patch, p.search); }
+function asnlm(u, W, H, p) {
+  const s2 = sigma2(u, W, H), N = u.length;
+  let [m, v] = localStats(u, W, H, p.window), w1 = new Float32Array(N);
+  for (let i = 0; i < N; i++) w1[i] = clamp((v[i] / (Math.max(m[i], 0.02) * s2) - 1.5) / 1.5, 0, 1);
+  w1 = gauss(w1, W, H, 2);
+  const h2 = new Float32Array(N);
+  for (let i = 0; i < N; i++) h2[i] = 2 * s2 * (p.beta_max - (p.beta_max - p.beta_min) * w1[i]);
+  const nlm = nlmCore(u, W, H, h2, 5, 11);
+  [m, v] = localStats(nlm, W, H, 5);
+  const r2 = new Float32Array(N); for (let i = 0; i < N; i++) r2[i] = v[i] / Math.max(m[i], 0.02);
+  const med = median(r2.filter((_, i) => i % 3 === 0)) + EPS;
+  let w2 = new Float32Array(N); for (let i = 0; i < N; i++) w2[i] = clamp((r2[i] / med - 3) / 4.5, 0, 1);
+  w2 = gauss(w2, W, H, 1);
+  const w = new Float32Array(N), gate = new Float32Array(N);
+  for (let i = 0; i < N; i++) { w[i] = Math.max(w1[i], w2[i]); gate[i] = (1 - w[i]) ** 2; }
+  const um = median(u.filter((_, i) => i % 3 === 0)), kappa = p.kappa_rel * Math.sqrt(s2 * um), k2 = kappa * kappa;
+  const a = Float32Array.from(nlm), dt = 0.2, [gn, gs, gw, ge] = bufs(N), [dn, ds, dw, de] = bufs(N);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, g = gate[i];
+    gn[i] = y > 0 ? Math.min(g, gate[i - W]) : g; gs[i] = y < H - 1 ? Math.min(g, gate[i + W]) : g;
+    gw[i] = x > 0 ? Math.min(g, gate[i - 1]) : g; ge[i] = x < W - 1 ? Math.min(g, gate[i + 1]) : g; }
+  const fc = (c, d) => k2 > 0 ? (c + (1 - c) / (1 + d * d / k2)) * d : c * d;
+  for (let it = 0; it < p.diff_iter; it++) {
+    diffs(a, W, H, dn, ds, dw, de);
+    for (let i = 0; i < N; i++) a[i] += dt * (fc(gn[i], dn[i]) + fc(gs[i], ds[i]) + fc(gw[i], dw[i]) + fc(ge[i], de[i]));
+  }
+  return { out: a, map: w, info: { "σ² (speckle)": s2.toFixed(4), "κ (edge stop)": kappa.toFixed(4) } };
+}
+const F = {
+  median: (u, W, H, p) => medianFilter(u, W, H, p),
+  lee: (u, W, H, p) => leeKuan(u, W, H, p, false),
+  kuan: (u, W, H, p) => leeKuan(u, W, H, p, true),
+  frost, pm: peronaMalik, srad, obnlm, asnlm,
+};
+onmessage = e => {
+  const { id, img, W, H, filter, params } = e.data, t0 = performance.now();
+  let res = F[filter](img, W, H, params);
+  if (!(res instanceof Float32Array)) { /* object result */ } else res = { out: res };
+  for (let i = 0; i < res.out.length; i++) res.out[i] = clamp(res.out[i], 0, 1);
+  postMessage({ id, out: res.out, map: res.map || null, info: res.info || {}, ms: performance.now() - t0 });
+};
+</script>
+
+<script>
+const SAMPLES = __SAMPLES__;
+const FILTERS = {
+  asnlm: { name: "AS-NLM (proposed)", about: "Tests the speckle statistics at every pixel. Averages hard where only speckle is present, gently at structure, then diffuses along boundaries but not across them.",
+    params: [["beta_max", "Smoothing in speckle (β max)", 1, 12, 0.5, 3], ["beta_min", "Smoothing at structure (β min)", 0.1, 2, 0.1, 0.5],
+             ["window", "Statistics window (px)", 7, 21, 2, 15], ["diff_iter", "Gated diffusion steps", 0, 300, 10, 150], ["kappa_rel", "Edge stop (relative κ)", 0, 0.5, 0.05, 0.2]] },
+  obnlm: { name: "OBNLM", about: "Bayesian non-local means with the Pearson distance (Coupé et al. 2009). One global smoothing strength for the whole image.",
+    params: [["beta", "Smoothing (β)", 0.5, 20, 0.5, 5], ["patch", "Patch size", 3, 9, 2, 5], ["search", "Search window", 7, 15, 2, 11]] },
+  pm: { name: "Perona-Malik diffusion", about: "Diffusion that slows down where the gradient is large. κ is an absolute intensity step, so it must be retuned per scanner setting.",
+    params: [["kappa", "κ (edge threshold)", 0.01, 0.15, 0.005, 0.03], ["n_iter", "Iterations", 10, 300, 10, 100]] },
+  srad: { name: "SRAD", about: "Speckle Reducing Anisotropic Diffusion (Yu & Acton 2002). Uses the instantaneous coefficient of variation as an edge detector.",
+    params: [["n_iter", "Iterations", 10, 400, 10, 150]] },
+  lee: { name: "Lee", about: "Local-statistics filter: output = mean + k (input − mean), with k from the ratio of speckle to local variation.",
+    params: [["size", "Window (px)", 3, 31, 2, 9]] },
+  kuan: { name: "Kuan", about: "Minimum mean-square-error version of Lee for multiplicative noise.",
+    params: [["size", "Window (px)", 3, 31, 2, 9]] },
+  frost: { name: "Frost", about: "Exponentially weighted kernel that narrows where the local coefficient of variation is high.",
+    params: [["size", "Window (px)", 5, 15, 2, 9], ["damping", "Damping K", 0.1, 2, 0.05, 0.5]] },
+  median: { name: "Median", about: "Non-linear rank filter. Removes impulsive outliers but rounds corners and erases thin structures.",
+    params: [["size", "Window (px)", 3, 11, 2, 5]] },
+};
+const $ = s => document.querySelector(s);
+const state = { sample: "phantom", filter: "asnlm", params: {}, mode: "split", split: 0.5, rois: [null, null], roiIdx: 0,
+  W: 0, H: 0, img: null, ref: null, out: null, map: null, info: {}, ms: 0 };
+const worker = new Worker(URL.createObjectURL(new Blob([$("#worker-src").textContent], { type: "text/javascript" })));
+let jobId = 0, running = false, pending = false;
+worker.onmessage = e => {
+  running = false;
+  if (e.data.id !== jobId) { if (pending) run(); return; }
+  Object.assign(state, { out: e.data.out, map: e.data.map, info: e.data.info, ms: e.data.ms });
+  $("#busy").hidden = true; draw(); readouts();
+  if (pending) run();
+};
+function run() {
+  if (!state.img) return;
+  if (running) { pending = true; return; }
+  pending = false; running = true; jobId++;
+  $("#busy").hidden = false;
+  worker.postMessage({ id: jobId, img: state.img, W: state.W, H: state.H, filter: state.filter, params: state.params });
+}
+let debounce; const schedule = () => { clearTimeout(debounce); debounce = setTimeout(run, 250); };
+
+function toGray(imgEl) {
+  const c = document.createElement("canvas"); c.width = imgEl.naturalWidth; c.height = imgEl.naturalHeight;
+  let W = c.width, H = c.height; const s = Math.min(1, 420 / Math.max(W, H));
+  W = Math.round(W * s); H = Math.round(H * s); c.width = W; c.height = H;
+  const x = c.getContext("2d"); x.drawImage(imgEl, 0, 0, W, H);
+  const d = x.getImageData(0, 0, W, H).data, g = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) g[i] = (d[4 * i] + d[4 * i + 1] + d[4 * i + 2]) / 765;
+  return { g, W, H };
+}
+function loadSrc(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; }); }
+async function setImage(imgSrc, refSrc) {
+  const a = toGray(await loadSrc(imgSrc));
+  state.img = a.g; state.W = a.W; state.H = a.H; state.out = null; state.map = null; state.rois = [null, null];
+  state.ref = refSrc ? toGray(await loadSrc(refSrc)).g : null;
+  $("#refBtn").hidden = !state.ref; if (!state.ref && state.mode === "ref") setMode("split");
+  const cv = $("#view"); cv.width = a.W; cv.height = a.H; fit();
+  if (state.sample === "phantom") state.rois = [roiBox(0.70, 0.66, 0.2, 0.1), roiBox(0.2, 0.25, 0.14, 0.1)];
+  draw(); readouts(); run();
+}
+function fit() {
+  if (!state.W) return;
+  const cw = $("#viewer").clientWidth, maxH = Math.max(320, window.innerHeight * 0.78);
+  const k = Math.min(cw / state.W, maxH / state.H), cv = $("#view");
+  cv.style.width = Math.round(state.W * k) + "px"; cv.style.height = Math.round(state.H * k) + "px";
+}
+window.addEventListener("resize", fit);
+function roiBox(fx, fy, fw, fh) { return { x: Math.round(fx * state.W), y: Math.round(fy * state.H), w: Math.round(fw * state.W), h: Math.round(fh * state.H) }; }
+
+const off = {};
+function toCanvas(key, arr, colorize) {
+  const c = off[key] || (off[key] = document.createElement("canvas")); c.width = state.W; c.height = state.H;
+  const x = c.getContext("2d"), id = x.createImageData(state.W, state.H);
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (colorize) { id.data[4*i] = 20 + 212 * v; id.data[4*i+1] = 24 + 152 * v; id.data[4*i+2] = 28 + 46 * v; }
+    else { const g = Math.round(v * 255); id.data[4*i] = id.data[4*i+1] = id.data[4*i+2] = g; }
+    id.data[4*i+3] = 255;
+  }
+  x.putImageData(id, 0, 0); return c;
+}
+function draw() {
+  const cv = $("#view"), x = cv.getContext("2d"), W = state.W, H = state.H;
+  if (!state.img) return;
+  const inp = toCanvas("in", state.img), out = state.out ? toCanvas("out", state.out) : inp;
+  let L = inp, R = out, tl = "Input", tr = "Filtered";
+  if (state.mode === "input") { R = null; tr = ""; }
+  if (state.mode === "output") { L = out; R = null; tl = "Filtered"; tr = ""; }
+  if (state.mode === "ref" && state.ref) { L = toCanvas("ref", state.ref); R = null; tl = "Ground truth (speckle-free)"; tr = ""; }
+  if (state.mode === "noise" && state.out) {
+    const n = new Float32Array(state.img.length); for (let i = 0; i < n.length; i++) n[i] = 0.5 + 2 * (state.img[i] - state.out[i]);
+    for (let i = 0; i < n.length; i++) n[i] = Math.min(1, Math.max(0, n[i]));
+    L = toCanvas("noise", n); R = null; tl = "Removed (input − filtered, ×2)"; tr = "";
+  }
+  if (state.mode === "map") {
+    if (state.map) { L = toCanvas("map", state.map, true); tl = "Structure map w(x)"; } else { tl = "Structure map: AS-NLM only"; }
+    R = null; tr = "";
+  }
+  x.drawImage(L, 0, 0);
+  if (R) {
+    const sx = Math.round(state.split * W);
+    x.save(); x.beginPath(); x.rect(sx, 0, W - sx, H); x.clip(); x.drawImage(R, 0, 0); x.restore();
+    x.fillStyle = "#e8b04a"; x.fillRect(sx - 1, 0, 2, H);
+    x.beginPath(); x.arc(sx, H / 2, 7, 0, 7); x.fill();
+  }
+  $("#tagL").textContent = tl; $("#tagR").textContent = tr; $("#tagR").hidden = !tr;
+  x.lineWidth = Math.max(1, W / 300); x.font = `${Math.round(W / 28)}px "IBM Plex Mono", monospace`;
+  state.rois.forEach((r, k) => { if (!r) return;
+    x.strokeStyle = k ? "#7fd0ff" : "#e8b04a"; x.setLineDash(k ? [5, 4] : []); x.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
+    x.fillStyle = x.strokeStyle; x.fillText(k ? "B" : "A", r.x + 4, r.y + Math.round(W / 28) + 2); });
+  x.setLineDash([]);
+}
+function roiVals(arr, r) { const v = []; for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) v.push(arr[y * state.W + x]); return v; }
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+const std = a => { const m = mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length); };
+function gcnr(a, b) { const h1 = new Float64Array(64), h2 = new Float64Array(64);
+  a.forEach(v => h1[Math.min(63, v * 64 | 0)] += 1 / a.length); b.forEach(v => h2[Math.min(63, v * 64 | 0)] += 1 / b.length);
+  let o = 0; for (let i = 0; i < 64; i++) o += Math.min(h1[i], h2[i]); return 1 - o; }
+function psnr(ref, a) { let s = 0; for (let i = 0; i < a.length; i++) s += (ref[i] - a[i]) ** 2; return 10 * Math.log10(1 / (s / a.length)); }
+function ssim(ref, a) {
+  const W = state.W, H = state.H, r = 3, C1 = 1e-4, C2 = 9e-4, N = a.length;
+  const box = s => { // reuse box mean via inline separable sum
+    const t = new Float32Array(N), o = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let q = 0; for (let j = -r; j <= r; j++) q += s[y * W + Math.min(W - 1, Math.max(0, x + j))]; t[y * W + x] = q / 7; }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let q = 0; for (let j = -r; j <= r; j++) q += t[Math.min(H - 1, Math.max(0, y + j)) * W + x]; o[y * W + x] = q / 7; }
+    return o; };
+  const prod = (p, q) => p.map((v, i) => v * q[i]);
+  const mx = box(ref), my = box(a), sxx = box(prod(ref, ref)), syy = box(prod(a, a)), sxy = box(prod(ref, a)); let s = 0;
+  for (let i = 0; i < N; i++) { const vx = sxx[i] - mx[i] ** 2, vy = syy[i] - my[i] ** 2, cxy = sxy[i] - mx[i] * my[i];
+    s += ((2 * mx[i] * my[i] + C1) * (2 * cxy + C2)) / ((mx[i] ** 2 + my[i] ** 2 + C1) * (vx + vy + C2)); }
+  return s / N;
+}
+function readouts() {
+  const tb = $("#ro tbody"), rows = [], o = state.out, f = (v, d = 2) => isFinite(v) ? v.toFixed(d) : "–";
+    const add = (name, a, b, d = 2, hi = true) => {
+    const cls = o && isFinite(b) ? ((b > a) === hi ? "up" : "down") : "";
+    rows.push(`<tr><td>${name}</td><td>${f(a, d)}</td><td class="${cls}">${o ? f(b, d) : "–"}</td></tr>`);
+  };
+  const [A, B] = state.rois;
+  if (A) { const a = roiVals(state.img, A), b = o ? roiVals(o, A) : [];
+    add("SNR in A (μ/σ)", mean(a) / std(a), o ? mean(b) / std(b) : NaN);
+    add("ENL in A", (mean(a) / std(a)) ** 2, o ? (mean(b) / std(b)) ** 2 : NaN, 1); }
+  if (A && B) { const a1 = roiVals(state.img, A), b1 = roiVals(state.img, B), a2 = o ? roiVals(o, A) : [], b2 = o ? roiVals(o, B) : [];
+    const cn = (p, q) => Math.abs(mean(p) - mean(q)) / Math.sqrt(std(p) ** 2 + std(q) ** 2);
+    add("CNR A vs B", cn(a1, b1), o ? cn(a2, b2) : NaN); add("gCNR A vs B", gcnr(a1, b1), o ? gcnr(a2, b2) : NaN); }
+  if (state.ref) { add("PSNR vs truth (dB)", psnr(state.ref, state.img), o ? psnr(state.ref, o) : NaN, 1); add("SSIM vs truth", ssim(state.ref, state.img), o ? ssim(state.ref, o) : NaN, 3); }
+  rows.push(`<tr><td>Run time</td><td>–</td><td>${o ? (state.ms / 1000).toFixed(2) + " s" : "–"}</td></tr>`);
+  for (const [k, v] of Object.entries(state.info || {})) rows.push(`<tr><td>${k}</td><td>–</td><td>${v}</td></tr>`);
+  tb.innerHTML = rows.join("");
+}
+
+function buildParams() {
+  const def = FILTERS[state.filter], box = $("#params"); state.params = {};
+  $("#about").textContent = def.about; box.innerHTML = "";
+  for (const [key, label, min, max, step, val] of def.params) {
+    state.params[key] = val;
+    const id = `p-${state.filter}-${key}`, d = document.createElement("div"); d.className = "param";
+    d.innerHTML = `<label for="${id}">${label}</label><output id="${id}-o">${val}</output><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}">`;
+    d.querySelector("input").addEventListener("input", e => { state.params[key] = +e.target.value; d.querySelector("output").textContent = e.target.value; schedule(); });
+    box.appendChild(d);
+  }
+}
+function setMode(m) { state.mode = m; document.querySelectorAll("#modes button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === m)); draw(); }
+
+const LABELS = { phantom: "Cyst phantom", organ: "Organ phantom", benign: "Benign lesion", malignant: "Malignant lesion" };
+for (const k of Object.keys(SAMPLES)) {
+  const b = document.createElement("button"); b.className = "chip"; b.textContent = LABELS[k] || k; b.setAttribute("aria-pressed", k === state.sample);
+  b.onclick = () => { state.sample = k; document.querySelectorAll("#samples .chip").forEach(c => c.setAttribute("aria-pressed", c === b));
+    setImage("data:image/png;base64," + SAMPLES[k].img, SAMPLES[k].ref ? "data:image/png;base64," + SAMPLES[k].ref : null); };
+  $("#samples").appendChild(b);
+}
+for (const [k, v] of Object.entries(FILTERS)) { const o = document.createElement("option"); o.value = k; o.textContent = v.name; $("#filter").appendChild(o); }
+$("#filter").onchange = e => { state.filter = e.target.value; buildParams(); run(); };
+document.querySelectorAll("#modes button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll("[data-roi]").forEach(b => b.onclick = () => { state.roiIdx = +b.dataset.roi;
+  document.querySelectorAll("[data-roi]").forEach(c => c.setAttribute("aria-pressed", c === b)); });
+
+// pointer: drag divider near it, otherwise draw ROI
+const cv = $("#view"); let drag = null;
+const pos = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * state.W, y: (e.clientY - r.top) / r.height * state.H }; };
+cv.addEventListener("pointerdown", e => { const p = pos(e); cv.setPointerCapture(e.pointerId);
+  const nearSplit = state.mode === "split" && Math.abs(p.x - state.split * state.W) < state.W * 0.03;
+  drag = nearSplit ? { kind: "split" } : { kind: "roi", x0: p.x, y0: p.y }; });
+cv.addEventListener("pointermove", e => { if (!drag) return; const p = pos(e);
+  if (drag.kind === "split") state.split = Math.min(0.98, Math.max(0.02, p.x / state.W));
+  else { const x = Math.max(0, Math.min(drag.x0, p.x)), y = Math.max(0, Math.min(drag.y0, p.y));
+    const w = Math.min(state.W - x, Math.abs(p.x - drag.x0)), h = Math.min(state.H - y, Math.abs(p.y - drag.y0));
+    if (w > 3 && h > 3) state.rois[state.roiIdx] = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) }; }
+  draw(); });
+cv.addEventListener("pointerup", () => { if (drag && drag.kind === "roi") readouts(); drag = null; });
+
+const fileIn = $("#file"), drop = $("#drop");
+const useFile = f => { if (!f || !f.type.startsWith("image/")) { drop.textContent = "That file is not an image. Choose a PNG or JPG."; return; }
+  const r = new FileReader(); r.onload = () => { state.sample = "upload"; document.querySelectorAll("#samples .chip").forEach(c => c.setAttribute("aria-pressed", false));
+    drop.textContent = f.name; setImage(r.result, null); }; r.readAsDataURL(f); };
+fileIn.onchange = e => useFile(e.target.files[0]);
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); useFile(e.dataTransfer.files[0]); });
+
+buildParams();
+setImage("data:image/png;base64," + SAMPLES.phantom.img, "data:image/png;base64," + SAMPLES.phantom.ref);
+</script>
